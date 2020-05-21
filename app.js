@@ -1,36 +1,42 @@
-const express = require("express");
-const http = require("http");
-const socketIo = require("socket.io");
-const port = process.env.PORT || 4001;
-const index = require("./routes/index");
-const app = express();
-app.use(index);
-const server = http.createServer(app);
-const io = socketIo(server);
+var udp = require("dgram");
+// creating a udp server
+var server = udp.createSocket("udp4");
 console.log(Date.now());
-//
-//
-io.on("connection", (socket) => {
-  //
-  //
-  console.log("New client connected");
-  socket.on("fromClient", (clientData) => {
-    console.log(`clientData from client = ${clientData}`);
-  });
-  //
-  //
+const appIP = "192.168.68.102";
+const appPort = 2222;
+// emits when any error occurs
+server.on("error", function (error) {
+  console.log("Error: " + error);
+  server.close();
+});
+// emits on new datagram msg
+server.on("message", async function (msg, info) {
+  console.log("Data received from client : " + msg.toString());
+  console.log(
+    "Received %d bytes from %s:%d\n",
+    msg.length,
+    info.address,
+    info.port
+  );
+  /**
+   * emit every 0.5 second
+   */
   let allTelemetryInterval = null;
   if (allTelemetryInterval) clearInterval(allTelemetryInterval);
-  allTelemetryInterval = setInterval(() => allTelemetry(socket), 500);
-  //
-  //
-  socket.on("navigateTo", async (navData) => {
+  allTelemetryInterval = setInterval(() => allTelemetry(server), 500);
+  /**
+   * fromClient
+   */
+  const M = JSON.parse(msg.toString());
+  if (M.type === "fromClient") {
+    console.log(`clientData from client = ${M.data}`);
+  }
+  /**
+   * navigateTo
+   */
+  if (M.type === "navigateTo") {
     console.log(
-      `request from client to navigate drone to ${JSON.stringify(
-        navData,
-        null,
-        2
-      )}`
+      `request from client to navigate drone to ${JSON.stringify(M, null, 2)}`
     );
     const startTime = Date.now();
     //
@@ -49,30 +55,56 @@ io.on("connection", (socket) => {
     //
     //emit result to client
     const finishTime = Date.now();
-    socket.emit("navFinished", {
-      status: isSuccess,
-      startTime,
-      finishTime,
-      navigationTime: waitTime,
-      targetCoordinate: navData.targetCoordinate,
-      totalDistance: isSuccess ? navData.dstDiagonalCM : getRandomInt(10, 100),
-      reachedCoordinate: isSuccess
-        ? navData.targetCoordinate
-        : {
-            lat: getRandomInt(200, 500),
-            lon: getRandomInt(200, 500),
-          },
-      reasons,
+    const msgToSend = Buffer.from(
+      JSON.stringify({
+        type: "navFinished",
+        status: isSuccess,
+        startTime,
+        finishTime,
+        navigationTime: waitTime,
+        targetCoordinate: M.targetCoordinate,
+        totalDistance: isSuccess
+          ? M.dstDiagonalCM
+          : getRandomInt(10, 100),
+        reachedCoordinate: isSuccess
+          ? M.targetCoordinate
+          : {
+              lat: getRandomInt(200, 500),
+              lon: getRandomInt(200, 500),
+            },
+        reasons,
+      })
+    );
+    server.send(msgToSend, appPort, appIP, (err) => {
+      if (err) {
+        console.log("ERROR sending data: " + err);
+      }
     });
-  });
+  }
 });
+//emits when socket is ready and listening for datagram msgs
+server.on("listening", function () {
+  var address = server.address();
+  var port = address.port;
+  var family = address.family;
+  var ipaddr = address.address;
+  console.log("Server is listening at port" + port);
+  console.log("Server ip :" + ipaddr);
+  console.log("Server is IP4/IP6 : " + family);
+});
+//emits after the socket is closed using socket.close();
+server.on("close", function () {
+  console.log("Socket is closed !");
+});
+server.bind(2222);
+//
 //
 let emergencyEventFinishTime = -1;
 const minHeight = 2;
 const maxHeight = 100;
 const emergencyHeight = 10;
-function allTelemetry(socket) {
-  if (!socket) return;
+function allTelemetry(server) {
+  if (!server) return;
   const batStatus = getRandomInt(0, 100);
   const wifiSignal = getRandomInt(0, 100);
   const latitude = getRandomInt(200, 500);
@@ -83,25 +115,40 @@ function allTelemetry(socket) {
   if (emergencyEventFinishTime === -1 && altitude <= emergencyHeight) {
     const emergencyTime = getRandomInt(3000, 7000);
     emergencyEventFinishTime = Date.now() + emergencyTime;
-    console.log(`emergency event starts now and should end in ${emergencyTime} which is ${emergencyTime / 1000} seconds`);
+    console.log(
+      `emergency event starts now and should end in ${emergencyTime} which is ${
+        emergencyTime / 1000
+      } seconds`
+    );
   }
   if (Date.now() <= emergencyEventFinishTime && altitude > emergencyHeight) {
     altitude = getRandomInt(minHeight, emergencyHeight);
   }
   console.log(`altitude = ${altitude}`);
-  if (emergencyEventFinishTime !== -1 && Date.now() > emergencyEventFinishTime) {
+  if (
+    emergencyEventFinishTime !== -1 &&
+    Date.now() > emergencyEventFinishTime
+  ) {
     emergencyEventFinishTime = -1;
-    console.log('emergency event finished');
+    console.log("emergency event finished");
   }
   //
-  socket.emit("allTelemetry", {
-    time: Date.now(),
-    batStatus,
-    wifiSignal,
-    latitude,
-    longitude,
-    altitude,
-    bearing,
+  const msgToSend = Buffer.from(
+    JSON.stringify({
+      type: "allTelemetry",
+      time: Date.now(),
+      batStatus,
+      wifiSignal,
+      latitude,
+      longitude,
+      altitude,
+      bearing,
+    })
+  );
+  server.send(msgToSend, appPort, appIP, (err) => {
+    if (err) {
+      console.log("ERROR sending data: " + err);
+    }
   });
 }
 function getRandomInt(min, max) {
@@ -112,4 +159,3 @@ function getRandomInt(min, max) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-server.listen(port, () => console.log(`Listening on port ${port}`));
