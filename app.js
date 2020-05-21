@@ -1,9 +1,13 @@
+const appIP = "192.168.68.102";
+const appPort = 2222;
+const telemetryInterval = 1000;
+//
+//
+//
 var udp = require("dgram");
 // creating a udp server
 var server = udp.createSocket("udp4");
 console.log(Date.now());
-const appIP = "192.168.68.102";
-const appPort = 2222;
 // emits when any error occurs
 server.on("error", function (error) {
   console.log("Error: " + error);
@@ -23,7 +27,7 @@ server.on("message", async function (msg, info) {
    */
   let allTelemetryInterval = null;
   if (allTelemetryInterval) clearInterval(allTelemetryInterval);
-  allTelemetryInterval = setInterval(() => allTelemetry(server), 500);
+  allTelemetryInterval = setInterval(() => allTelemetry(server), telemetryInterval);
   /**
    * fromClient
    */
