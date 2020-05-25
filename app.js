@@ -4,7 +4,7 @@
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
-const port = process.env.PORT || 4001;
+const port = process.env.PORT || 3000;
 const index = require("./routes/index");
 const app = express();
 app.use(index);
@@ -14,15 +14,45 @@ console.log(Date.now());
 //
 //
 io.on("connection", (socket) => {
+  let allTelemetryInterval = null;
   //
   //
   console.log("New client connected");
   socket.on("fromClient", (clientData) => {
     console.log(`clientData from client = ${clientData}`);
   });
+  socket.on("disconnect", reason => {
+    console.log('disconnect')
+    clearInterval(allTelemetryInterval);
+  })
   //
   //
-  let allTelemetryInterval = null;
+  socket.on("forward", data => {
+    console.log(`forward event!`)
+  })
+  socket.on("left", data => {
+    console.log(`left event!`)
+  })
+  socket.on("right", data => {
+    console.log(`right event!`)
+  })
+  socket.on("backward", data => {
+    console.log(`backward event!`)
+  })
+  socket.on("up", data => {
+    console.log(`up event!`)
+  })
+  socket.on("spinLeft", data => {
+    console.log(`pinLeft event!`)
+  })
+  socket.on("spinRight", data => {
+    console.log(`pinRight event!`)
+  })
+  socket.on("down", data => {
+    console.log(`down event!`)
+  })
+  //
+  //
   if (allTelemetryInterval) clearInterval(allTelemetryInterval);
   allTelemetryInterval = setInterval(() => allTelemetry(socket), 500);
   //
